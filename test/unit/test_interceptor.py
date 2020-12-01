@@ -1,6 +1,5 @@
 from io import StringIO
-from unittest import IsolatedAsyncioTestCase
-from unittest.mock import MagicMock
+from unittest import IsolatedAsyncioTestCase, mock
 
 from aiohttp import web
 from hlsrelay.interceptor import StreamInterceptor
@@ -41,16 +40,14 @@ class TestStreamInterceptor(IsolatedAsyncioTestCase):
         )
 
     async def test_relays_correct_response(self) -> None:
-        mock_request = MagicMock()
-        mock_request.match_info = {"path_to_resource": "playlist.m3u8"}
+        mock_request = mock.MagicMock(match_info={"path_to_resource": "playlist.m3u8"})
         res = await self.interceptor.intercept(mock_request)
         self.assertEqual(res.status, 206)
         self.assertEqual(res.headers, test_headers)
         self.assertEqual(res.body, b"A test request was sent to http://test.com/playlist.m3u8")
 
     async def test_logs_incoming_request_and_response(self) -> None:
-        mock_request = MagicMock()
-        mock_request.match_info = {"path_to_resource": "video.ts"}
+        mock_request = mock.MagicMock(match_info={"path_to_resource": "video.ts"})
         _ = await self.interceptor.intercept(mock_request)
 
         logs = self.output.getvalue().splitlines()
