@@ -1,12 +1,14 @@
+import sys
+from typing import TextIO
+
 from aiohttp import web
 
-
-async def handle(request: web.Request) -> web.Response:
-    print(request.match_info)
-    return web.Response()
+from hlsrelay.interceptor import StreamInterceptor
+from hlsrelay.request import get_request
 
 
-def create_app() -> web.Application:
+def create_app(base_url: str, out: TextIO = sys.stdout) -> web.Application:
     app = web.Application()
-    app.add_routes([web.get("/", handle), web.get("/{name}", handle)])
+    interceptor = StreamInterceptor(base_url, request_executor=get_request, output=out)
+    app.add_routes([web.get("/{path_to_resource:.*}", interceptor.intercept)])
     return app
