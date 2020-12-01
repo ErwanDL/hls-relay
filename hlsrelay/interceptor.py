@@ -23,7 +23,7 @@ class StreamInterceptor:
         t1 = time.time()
         stream_res = await self._request_executor(full_path)
         t2 = time.time()
-        time_elapsed_ms = round(t2 - t1, 6) * 1000
+        time_elapsed_ms = round((t2 - t1) * 1000, 2)
         self._log(f"[OUT] {full_path} ({time_elapsed_ms}ms)")
         return stream_res
 
