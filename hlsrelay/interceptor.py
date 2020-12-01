@@ -1,4 +1,3 @@
-import sys
 import time
 from typing import Awaitable, Callable, TextIO
 from urllib.parse import urljoin
@@ -9,17 +8,17 @@ from aiohttp import web
 class StreamInterceptor:
     def __init__(
         self,
-        stream_url: str,
+        base_url: str,
         request_executor: Callable[[str], Awaitable[web.Response]],
-        output: TextIO = sys.stdout,
+        output: TextIO,
     ) -> None:
-        self._stream_url = stream_url
+        self._base_url = base_url
         self._request_executor = request_executor
         self._output = output
 
     async def intercept(self, request: web.Request) -> web.Response:
         path_to_resource = request.match_info.get("path_to_resource", "")
-        full_path = urljoin(self._stream_url, path_to_resource)
+        full_path = urljoin(self._base_url, path_to_resource)
         self._log(f"[IN] {full_path}")
         t1 = time.time()
         stream_res = await self._request_executor(full_path)
