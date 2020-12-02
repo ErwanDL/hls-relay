@@ -17,8 +17,8 @@ class StreamInterceptor:
         self._output = output
 
     async def intercept(self, request: web.Request) -> web.Response:
-        path_to_resource = request.match_info.get("path_to_resource", "")
-        full_path = urljoin(self._base_url, path_to_resource)
+        resource_URI = request.match_info.get("resource_URI", "")
+        full_path = urljoin(self._base_url, resource_URI)
         self._log(f"[IN] {full_path}")
         t1 = time.time()
         stream_res = await self._request_executor(full_path)

@@ -10,5 +10,5 @@ from hlsrelay.request import get_request
 def create_app(base_url: str, out: TextIO = sys.stdout) -> web.Application:
     app = web.Application()
     interceptor = StreamInterceptor(base_url, request_executor=get_request, output=out)
-    app.add_routes([web.get("/{path_to_resource:.*}", interceptor.intercept)])
+    app.add_routes([web.get("/{resource_URI:.*}", interceptor.intercept)])
     return app
