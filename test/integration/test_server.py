@@ -65,7 +65,7 @@ class TestIntegrationServer(IsolatedAsyncioTestCase):
             resource_path,
         )
         self.assert_status_ok_and_body(res, body, expected_body_filename)
-        self.assert_logs_are_correct(out, urljoin(base_url, resource_path))
+        self.assert_logs_ins_and_outs(out)
 
     async def query_through_relay_server(
         self, base_url: str, resource_path: str
@@ -86,8 +86,8 @@ class TestIntegrationServer(IsolatedAsyncioTestCase):
             expected_body = f.read()
             self.assertEqual(body, expected_body)
 
-    def assert_logs_are_correct(self, out: StringIO, full_resource_path: str) -> None:
+    def assert_logs_ins_and_outs(self, out: StringIO) -> None:
         logs = out.getvalue().splitlines()
         self.assertEqual(len(logs), 2)
-        self.assertEqual(logs[0], f"[IN] {full_resource_path}")
-        self.assertRegex(logs[1], rf"\[OUT\] {full_resource_path} \([0-9]+\.[0-9]+ms\)")
+        self.assertTrue(logs[0].startswith("[IN]"))
+        self.assertTrue(logs[1].startswith("[OUT]"))
