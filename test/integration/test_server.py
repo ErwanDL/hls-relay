@@ -19,7 +19,7 @@ class TestIntegrationServer(IsolatedAsyncioTestCase):
     async def test_bitdash_m3u8_1(self) -> None:
         base_url = "https://bitdash-a.akamaihd.net"
         resource_path = "/content/MI201109210084_1/m3u8s/f08e80da-bf1d-4e3d-8899-f0f6155f6efa.m3u8"
-        exp_filename = "bitdash-f08e80da-bf1d-4e3d-8899-f0f6155f6efa.m3u8.body"
+        exp_filename = "bitdash-parkour-playlist.m3u8.body"
         await self._assert_server_relays_correct_response_and_logs(
             base_url, resource_path, exp_filename
         )
