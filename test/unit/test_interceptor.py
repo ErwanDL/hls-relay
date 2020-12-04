@@ -32,7 +32,7 @@ async def fake_request_executor(url: str) -> web.Response:
     )
 
 
-class TestStreamInterceptor(IsolatedAsyncioTestCase):
+class TestStreamInterceptorBasic(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.output = StringIO()
         self.interceptor = StreamInterceptor(
@@ -68,25 +68,55 @@ class TestStreamInterceptor(IsolatedAsyncioTestCase):
             logs[1], r"\[OUT\]\[SEGMENT\] http://test.com/video.ts \([0-9]+\.[0-9]+ms\)"
         )
 
-    async def test_detects_track_switches(self) -> None:
-        mock_request_playlist1 = mock.MagicMock(match_info={"resource_URI": "playlist1.m3u8"})
-        _ = await self.interceptor.intercept(mock_request_playlist1)
 
-        mock_request_segment = mock.MagicMock(match_info={"resource_URI": "segment.ts"})
-        _ = await self.interceptor.intercept(mock_request_segment)
+async def track_switch_test_request_executor(url: str) -> web.Response:
+    if url.endswith("manifest.m3u8"):
+        return web.Response(
+            status=200,
+            body=b"""#EXTM3U
+#EXT-X-VERSION:5
 
-        mock_request_playlist2 = mock.MagicMock(match_info={"resource_URI": "playlist2.m3u8"})
-        _ = await self.interceptor.intercept(mock_request_playlist2)
+#EXT-X-STREAM-INF:BANDWIDTH=628000,CODECS="avc1.42c00d,mp4a.40.2",RESOLUTION=320x180
+video_180.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=928000,CODECS="avc1.42c00d,mp4a.40.2",RESOLUTION=480x270
+video_270.m3u8""",
+        )
+    else:
+        return web.Response(status=200, body=b"Test body")
+
+
+class TestStreamInterceptorTrackSwitch(IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.output = StringIO()
+        self.interceptor = StreamInterceptor(
+            "http://test.com",
+            request_executor=track_switch_test_request_executor,
+            output=self.output,
+        )
+
+    async def test_detects_track_switch(self) -> None:
+        mock_request_master_playlist = mock.MagicMock(match_info={"resource_URI": "manifest.m3u8"})
+        _ = await self.interceptor.intercept(mock_request_master_playlist)
+
+        mock_request_video_180 = mock.MagicMock(match_info={"resource_URI": "video_180.m3u8"})
+        _ = await self.interceptor.intercept(mock_request_video_180)
+
+        mock_request_video_270 = mock.MagicMock(match_info={"resource_URI": "video_270.m3u8"})
+        _ = await self.interceptor.intercept(mock_request_video_270)
 
         logs = self.output.getvalue().splitlines()
         self.assertEqual(logs[-3], "[TRACK SWITCH]")
+        self.assertEqual(logs.count("[TRACK SWITCH]"), 1)
 
-    async def test_no_false_positive_if_sequential_m3u8_files(self) -> None:
-        mock_request_playlist1 = mock.MagicMock(match_info={"resource_URI": "playlist1.m3u8"})
-        _ = await self.interceptor.intercept(mock_request_playlist1)
+    async def test_no_track_switch_if_not_in_manifest(self) -> None:
+        mock_request_master_playlist = mock.MagicMock(match_info={"resource_URI": "manifest.m3u8"})
+        _ = await self.interceptor.intercept(mock_request_master_playlist)
 
-        mock_request_playlist2 = mock.MagicMock(match_info={"resource_URI": "playlist2.m3u8"})
-        _ = await self.interceptor.intercept(mock_request_playlist2)
+        mock_request_video_180 = mock.MagicMock(match_info={"resource_URI": "video_180.m3u8"})
+        _ = await self.interceptor.intercept(mock_request_video_180)
+
+        mock_request_other_video = mock.MagicMock(match_info={"resource_URI": "other_video.m3u8"})
+        _ = await self.interceptor.intercept(mock_request_other_video)
 
         logs = self.output.getvalue().splitlines()
         self.assertNotIn("[TRACK SWITCH]", logs)
