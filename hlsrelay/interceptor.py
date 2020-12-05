@@ -1,10 +1,12 @@
 import time
 from enum import Enum, auto
 from typing import Awaitable, Callable, Optional, TextIO, Tuple, cast
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import m3u8
 from aiohttp import web
+
+from hlsrelay.config import HOST, PORT
 
 
 class MediaType(Enum):
@@ -31,25 +33,31 @@ class StreamInterceptor:
 
     async def intercept(self, request: web.Request) -> web.Response:
         resource_URI = request.match_info.get("resource_URI", "")
-        full_path = urljoin(self._base_url, resource_URI)
+        full_url = urljoin(self._base_url, resource_URI)
         media_type = MediaType.from_URI(resource_URI)
 
-        self._detect_track_switch(media_type, full_path)
+        if media_type == MediaType.MANIFEST:
+            self._detect_track_switch(full_url)
 
-        self._log(f"[IN][{media_type.name}] {full_path}")
-        stream_res, time_elapsed_ms = await self._request_stream(full_path)
-        self._log(f"[OUT][{media_type.name}] {full_path} ({time_elapsed_ms}ms)")
+        self._log(f"[IN][{media_type.name}] {full_url}")
+        stream_res, time_elapsed_ms = await self._request_stream(full_url)
+        self._log(f"[OUT][{media_type.name}] {full_url} ({time_elapsed_ms}ms)")
 
-        self._save_if_is_master_playlist(media_type, cast(bytes, stream_res.body), full_path)
+        if media_type == MediaType.MANIFEST:
+            stream_res_body_str = cast(bytes, stream_res.body).decode("utf-8")
+            self._save_if_is_master_playlist(stream_res_body_str, full_url)
+            interceptor_res_body = self._handle_absolute_urls(stream_res_body_str)
+        else:
+            interceptor_res_body = stream_res.body
 
-        return stream_res
+        return web.Response(status=200, body=interceptor_res_body)
 
-    def _detect_track_switch(self, req_media_type: MediaType, req_full_path: str) -> None:
-        if self._current_master_playlist is None or req_media_type != MediaType.MANIFEST:
+    def _detect_track_switch(self, req_full_url: str) -> None:
+        if self._current_master_playlist is None:
             return
 
         if any(
-            (req_full_path == playlist.absolute_uri)
+            (req_full_url == playlist.absolute_uri)
             for playlist in self._current_master_playlist.playlists
         ):
             if not self._first_track_started:
@@ -68,11 +76,23 @@ class StreamInterceptor:
 
         return stream_res, time_elapsed_ms
 
-    def _save_if_is_master_playlist(
-        self, req_media_type: MediaType, res_body: bytes, req_full_path
-    ) -> None:
-        if req_media_type == MediaType.MANIFEST:
-            playlist = m3u8.loads(res_body.decode("utf-8"))
-            if playlist.is_variant:
-                playlist.base_uri = urljoin(req_full_path, ".")
-                self._current_master_playlist = playlist
+    def _save_if_is_master_playlist(self, res_body: str, req_full_url: str) -> None:
+        playlist = m3u8.loads(res_body)
+        if playlist.is_variant:
+            playlist.base_uri = urljoin(req_full_url, ".")
+            self._current_master_playlist = playlist
+
+    @staticmethod
+    def _handle_absolute_urls(res_body: str) -> bytes:
+        """If absolute URLs are detected in the manifest, we replace the host name
+        with that of our local server."""
+        adjusted_body_lines = []
+
+        for line in res_body.split("\n"):
+            if line.startswith(("http://", "https://")):
+                parse_result = urlparse(line)
+                adjusted_body_lines.append(f"http://{HOST}:{PORT}" + parse_result.path)
+            else:
+                adjusted_body_lines.append(line)
+
+        return bytes("\n".join(adjusted_body_lines), encoding="utf-8")

@@ -1,50 +1,20 @@
 from io import StringIO
+from test.unit.utils import (
+    content_test_request_executor,
+    dummy_request_executor,
+    track_switch_test_request_executor,
+)
 from unittest import IsolatedAsyncioTestCase, mock
 
-from aiohttp import web
 from hlsrelay.interceptor import StreamInterceptor
 
-test_headers = {
-    "Accept-Ranges": "bytes",
-    "Content-Type": "audio/x-mpegurl",
-    "Etag": '"a852221858992283a46628accca46f33:1509454736"',
-    "Last-Modified": "Tue, 31 Oct 2017 12:58:56 GMT",
-    "Server": "TestServer",
-    "Content-Length": "9",
-    "Expires": "Tue, 01 Dec 2020 10:00:34 GMT",
-    "Cache-Control": "max-age=0, no-cache, no-store",
-    "Pragma": "no-cache",
-    "Date": "Tue, 01 Dec 2020 10:00:34 GMT",
-    "Connection": "keep-alive",
-    "Access-Control-Max-Age": "86400",
-    "Access-Control-Allow-Credentials": "false",
-    "Access-Control-Allow-Headers": "*",
-    "Access-Control-Allow-Methods": "GET,POST,HEAD",
-    "Access-Control-Allow-Origin": "*",
-}
 
-
-async def fake_request_executor(url: str) -> web.Response:
-    return web.Response(
-        status=206,
-        body=bytes(f"A test request was sent to {url}", encoding="utf-8"),
-        headers=test_headers,
-    )
-
-
-class TestStreamInterceptorBasic(IsolatedAsyncioTestCase):
+class TestStreamInterceptorLogging(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         self.output = StringIO()
         self.interceptor = StreamInterceptor(
-            "http://test.com", request_executor=fake_request_executor, output=self.output
+            "http://test.com", request_executor=dummy_request_executor, output=self.output
         )
-
-    async def test_relays_correct_response(self) -> None:
-        mock_request = mock.MagicMock(match_info={"resource_URI": "playlist.m3u8"})
-        res = await self.interceptor.intercept(mock_request)
-        self.assertEqual(res.status, 206)
-        self.assertEqual(res.headers, test_headers)
-        self.assertEqual(res.body, b"A test request was sent to http://test.com/playlist.m3u8")
 
     async def test_logs_with_playlist_file(self) -> None:
         mock_request = mock.MagicMock(match_info={"resource_URI": "playlist.m3u8"})
@@ -69,20 +39,52 @@ class TestStreamInterceptorBasic(IsolatedAsyncioTestCase):
         )
 
 
-async def track_switch_test_request_executor(url: str) -> web.Response:
-    if url.endswith("manifest.m3u8"):
-        return web.Response(
-            status=200,
-            body=b"""#EXTM3U
-#EXT-X-VERSION:5
-
-#EXT-X-STREAM-INF:BANDWIDTH=628000,CODECS="avc1.42c00d,mp4a.40.2",RESOLUTION=320x180
-video_180.m3u8
-#EXT-X-STREAM-INF:BANDWIDTH=928000,CODECS="avc1.42c00d,mp4a.40.2",RESOLUTION=480x270
-video_270.m3u8""",
+class TestStreamInterceptorResponse(IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        self.output = StringIO()
+        self.interceptor = StreamInterceptor(
+            "http://test.com", request_executor=content_test_request_executor, output=self.output
         )
-    else:
-        return web.Response(status=200, body=b"Test body")
+
+    async def test_forwards_segment_response_without_modification(self) -> None:
+        mock_request_segment = mock.MagicMock(match_info={"resource_URI": "segment.ts"})
+        res = await self.interceptor.intercept(mock_request_segment)
+
+        self.assertEqual(res.body, b"\xb4\xb1\x03\xc3\xa2\x12")
+
+    async def test_forwards_relative_manifest_without_modification(self) -> None:
+        mock_request_relative_manifest = mock.MagicMock(
+            match_info={"resource_URI": "manifest-relative.m3u8"}
+        )
+        res = await self.interceptor.intercept(mock_request_relative_manifest)
+
+        self.assertEqual(
+            res.body,
+            b"""#EXTM3U
+#EXT-X-VERSION:3
+#EXTINF:2.0,
+media-1.ts
+#EXTINF:2.0,
+media-1.ts
+""",
+        )
+
+    async def test_forwards_absolute_manifest_with_modified_host(self) -> None:
+        mock_request_relative_manifest = mock.MagicMock(
+            match_info={"resource_URI": "manifest-absolute.m3u8"}
+        )
+        res = await self.interceptor.intercept(mock_request_relative_manifest)
+
+        self.assertEqual(
+            res.body,
+            b"""#EXTM3U
+#EXT-X-VERSION:3
+#EXTINF:2.0,
+http://localhost:8080/media-1.ts
+#EXTINF:2.0,
+http://localhost:8080/media-1.ts
+""",
+        )
 
 
 class TestStreamInterceptorTrackSwitch(IsolatedAsyncioTestCase):
