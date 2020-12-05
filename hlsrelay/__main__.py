@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 
 from aiohttp import web
 
+from hlsrelay.config import HOST, PORT
 from hlsrelay.server import create_app
 
 if __name__ == "__main__":
@@ -12,4 +13,4 @@ if __name__ == "__main__":
     base_url = args.base_url[0]
 
     app = create_app(base_url)
-    web.run_app(app, host="localhost")
+    web.run_app(app, host=HOST, port=PORT)
