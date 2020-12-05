@@ -56,6 +56,16 @@ class TestIntegrationServer(IsolatedAsyncioTestCase):
             base_url, resource_path, exp_filename
         )
 
+    async def test_playlist_with_absolute_urls(self) -> None:
+        base_url = "https://multiplatform-f.akamaihd.net"
+        resource_path = "/i/multi/will/bunny/big_buck_bunny_,640x360_400,640x360_700,640x360_1000,\
+950x540_1500,.f4v.csmil/master.m3u8"
+
+        exp_filename = "absolute-urls-playlist.m3u8.body"
+        await self._assert_server_relays_correct_response_and_logs(
+            base_url, resource_path, exp_filename
+        )
+
     async def _assert_server_relays_correct_response_and_logs(
         self, base_url: str, resource_path: str, expected_body_filename: str
     ) -> None:
@@ -66,8 +76,9 @@ class TestIntegrationServer(IsolatedAsyncioTestCase):
         self._assert_status_ok_and_body(res, body, expected_body_filename)
         self._assert_logs_ins_and_outs(out)
 
+    @staticmethod
     async def _query_through_relay_server(
-        self, base_url: str, resource_path: str
+        base_url: str, resource_path: str
     ) -> Tuple[ClientResponse, bytes, StringIO]:
         out = StringIO()
         app = create_app(base_url, out)
